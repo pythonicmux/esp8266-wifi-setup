@@ -11,27 +11,83 @@ String ssidList;
 
 DNSServer dnsServer;
 ESP8266WebServer webServer(80);
+WiFiServer wifiServer(60);
 
 void setup() {
   Serial.begin(115200);
   EEPROM.begin(512);
+  pinMode(LED_BUILTIN, OUTPUT);
   delay(10);
-  if (restoreConfig()) {
-    if (checkConnection()) {
+  if (restoreConfig()) { //if stuff is written in eeprom
+    if (checkConnection()) { //waiting for wifi connetion
+      //if it did connect
       settingMode = false;
-      startWebServer();
+      //startWebServer(); 
+      //NOW GO TO LOOP AND START UART PASSTHROUGH
+      wifiServer.begin();
+      Serial.print("Connected. Starting UART passthrough at ");
+      Serial.println(WiFi.localIP());
       return;
     }
-  }
+  } //if no connection found then it's in setup mode
   settingMode = true;
-  setupMode();
+  setupMode(); //makes soft access point and does web server w/ form
 }
 
+//echo client test stuff
+int ledState = HIGH; //to blink led
+unsigned long previousMillis = 0;
+const long interval = 500;
+WiFiClient client;
+
 void loop() {
+  //set up wifi 
   if (settingMode) {
     dnsServer.processNextRequest();
+    webServer.handleClient();
+    return;
   }
-  webServer.handleClient();
+  //UART passthrough
+  else{
+    //if connected to wifi and client
+    if((client = wifiServer.available())){  
+        Serial.println("Client connected");   
+        //solid if client connected
+        ledState = LOW;
+        digitalWrite(LED_BUILTIN, ledState);
+        while(client.connected()){
+          while(client.available() > 0){
+            char c = client.read();
+            Serial.write(c);
+            client.write(c);
+          }
+        }
+        client.stop();
+        Serial.println("Client disconnected normally");
+    }
+    //if not then blinking
+    else if(WiFi.status() == WL_CONNECTED){
+        unsigned long currentMillis = millis();
+        if(currentMillis - previousMillis >= interval){
+          previousMillis = currentMillis;
+          if(ledState == LOW){
+            Serial.println("Client not connected");
+            ledState = HIGH;
+          }
+          else{
+            ledState = LOW;
+          }
+        }
+        digitalWrite(LED_BUILTIN, ledState);
+    }
+    //not connected
+    else{
+      ledState = HIGH;
+      digitalWrite(LED_BUILTIN, ledState);
+      //restart
+      setup();
+    }
+  }
 }
 
 boolean restoreConfig() {
@@ -117,7 +173,9 @@ void startWebServer() {
       webServer.send(200, "text/html", makePage("AP mode", s));
     });
   }
+  //if it's set up
   else {
+    return;
     Serial.print("Starting Web Server at ");
     Serial.println(WiFi.localIP());
     webServer.on("/", []() {
