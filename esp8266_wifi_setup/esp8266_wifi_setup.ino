@@ -5,8 +5,10 @@
 #include <ESP8266WebServer.h>
 
 const IPAddress apIP(192, 168, 1, 1);
-const char* apSSID = "ESP8266_SETUP";
+char apSSID[21]; //Monarch-Setup-chipid
+const char *apPass = "birdbird";
 boolean settingMode;
+boolean needToReset = false;
 String ssidList;
 
 DNSServer dnsServer;
@@ -14,9 +16,11 @@ ESP8266WebServer webServer(80);
 WiFiServer wifiServer(60);
 
 void setup() {
+  sprintf(apSSID, "%s%06x", "Monarch-Setup-", ESP.getChipId());
   Serial.begin(115200);
   EEPROM.begin(512);
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(2,INPUT_PULLUP);
   delay(10);
   if (restoreConfig()) { //if stuff is written in eeprom
     if (checkConnection()) { //waiting for wifi connetion
@@ -26,7 +30,8 @@ void setup() {
       //NOW GO TO LOOP AND START UART PASSTHROUGH
       wifiServer.begin();
       Serial.print("Connected. Starting UART passthrough at ");
-      Serial.println(WiFi.localIP());
+      Serial.print(WiFi.localIP());
+      Serial.println(", port 60");
       return;
     }
   } //if no connection found then it's in setup mode
@@ -38,6 +43,7 @@ void setup() {
 int ledState = HIGH; //to blink led
 unsigned long previousMillis = 0;
 const long interval = 500;
+const long resetInterval = 300;
 WiFiClient client;
 
 void loop() {
@@ -45,10 +51,41 @@ void loop() {
   if (settingMode) {
     dnsServer.processNextRequest();
     webServer.handleClient();
+    ledState = HIGH;
+    digitalWrite(LED_BUILTIN, ledState);
     return;
   }
   //UART passthrough
   else{
+    //if GPIO2 is pulled to LOW then
+    //and restart- even if GPIO2 is LOW after it restarts,
+    //it's fine because it won't check for it until connection 
+    //to wifi is made, and since the memory is clear then
+    //the user has to re-enter the WiFi credentials before it'll check.
+    //Therefore, as long as GPIO2 isn't low when the user re-enters
+    //the SSID and password, it should be fine.
+    if((digitalRead(2) == LOW) || needToReset){
+        Serial.println("memory reset");
+        if(needToReset) return;
+        needToReset = true;
+        //reset memory and commit it to clear stored Wi-Fi data
+        for (int i = 0; i < 96; ++i) {
+          EEPROM.write(i, 0);
+        }
+        EEPROM.commit();
+        unsigned long currentMillis = millis();
+        if(currentMillis - previousMillis >= resetInterval){
+          previousMillis = currentMillis;
+          if(ledState == LOW){
+            ledState = HIGH;
+          }
+          else{
+            ledState = LOW;
+          }
+        }
+        digitalWrite(LED_BUILTIN, ledState);
+        ESP.restart();
+    }
     //if connected to wifi and client
     if((client = wifiServer.available())){  
         Serial.println("Client connected");   
@@ -67,11 +104,11 @@ void loop() {
     }
     //if not then blinking
     else if(WiFi.status() == WL_CONNECTED){
+        //Serial.println("Client not connected");
         unsigned long currentMillis = millis();
         if(currentMillis - previousMillis >= interval){
           previousMillis = currentMillis;
           if(ledState == LOW){
-            Serial.println("Client not connected");
             ledState = HIGH;
           }
           else{
@@ -84,6 +121,7 @@ void loop() {
     else{
       ledState = HIGH;
       digitalWrite(LED_BUILTIN, ledState);
+      Serial.println("Wi-Fi disconnected");
       //restart
       setup();
     }
@@ -166,6 +204,8 @@ void startWebServer() {
       s += ssid;
       s += "\" after the restart.";
       webServer.send(200, "text/html", makePage("Wi-Fi Settings", s));
+      //reset gpio2 pin before reset??
+      //pinMode(2,INPUT);
       ESP.restart();
     });
     webServer.onNotFound([]() {
@@ -211,11 +251,14 @@ void setupMode() {
   delay(100);
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(apSSID);
+  WiFi.softAP(apSSID, apPass);
   dnsServer.start(53, "*", apIP);
   startWebServer();
   Serial.print("Starting Access Point at \"");
   Serial.print(apSSID);
+  Serial.println("\"");
+  Serial.print("Password is \"");
+  Serial.print(apPass);
   Serial.println("\"");
 }
 
