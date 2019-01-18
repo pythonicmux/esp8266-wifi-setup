@@ -8,6 +8,7 @@ It uses the Arduino core library on the ESP8266 chip.
 
 This code will have the ESP8266 create a soft access point, which you can then access to reach the Wi-Fi
 setup page in this video from the original poster:
+
 ![sample](http://3.bp.blogspot.com/-ETIrnJynYj8/VdzTZQfJqLI/AAAAAAAATPU/_qUS0v57Bk0/esp8266-wifi-setup.gif)
 
 Note that you can't access the reset page that the OP has in the video.
@@ -16,13 +17,20 @@ so that any client can connect and type stuff to echo across Serial to another d
 
 
 The wiring config for this is actually to an Arduino and a power source (3.3V).
+
 3v3, GND <---> Power source 3.3V, GND
 TX <---> Arduino TX
+
 RX <---> Arduino RX
+
 EN <----> Power source 3.3V
+
 Arduino GND <----> Power source GND
+
 IO2 <---> Power source 3.3V, as it's pulled up high for memory reset.
+
 IO0 <---> When flashing code, to power source GND, as that lets the ESP8266 go into flash mode.
+
 When running the code, restart it, take out the IO0 from GND and leave it floating.
 
 
