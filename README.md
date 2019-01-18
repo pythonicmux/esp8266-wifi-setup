@@ -15,6 +15,16 @@ Note that you can't access the reset page that the OP has in the video.
 After connecting and setting up the Wi-Fi, the ESP8266 will restart and deploy a UART passthrough
 so that any client can connect and type stuff to echo across Serial to another device.
 
+One great thing this program has is that once you input the SSID and password of the wifi,
+the ESP chip will write it into EEPROM memory, so that it can remember next time you
+boot it up. 
+
+If you want to reset memory, just power up the chip and connect IO2 to GND.
+This resets memory and restarts the chip. Note that if your laptop remains connected to wifi
+without interruption, restart your computer's wifi connections, as it probably didn't 
+register that the ESP chip turned off and then back on, and it may not work until
+you reconnect to it.
+
 
 The wiring config for this is actually to an Arduino and a power source (3.3V).
 
